@@ -4,18 +4,41 @@ State Reference for R-Windows:
 1 = Anchored (Reinforced)
 2 = Pried into frame (Reinforced)
 3 = Fully Constructed
-33 = Heated bolts & pried out of the frame
-44 = Heated bolts unscrewed
-55 = Fully Constructed, Heated bolts
+4 = Heated bolts & pried out of the frame
+5 = Heated bolts unscrewed
+6 = Fully Constructed, Heated bolts
 */
 
 /obj/structure/window
 	state = 3 //Setting it to the default state
 
+/obj/structure/window/proc/shock(mob/user as mob, prb)
+
+	if(!anchored)		// anchored/destroyed grilles are never connected
+		return 0
+	if(!prob(prb))
+		return 0
+	if(!in_range(src, user))//To prevent TK and mech users from getting shocked
+		return 0
+	var/turf/T = get_turf(src)
+	var/obj/structure/cable/C = T.get_cable_node()
+	if(C)
+		if(electrocute_mob(user, C, src))
+			if(C.powernet)
+				C.powernet.trigger_warning()
+			var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+			s.set_up(3, 1, src)
+			s.start()
+			if(user.stunned)
+				return 1
+		else
+			return 0
+	return 0
+
 /obj/structure/window/proc/cool_bolts()
-	if(state == 55)
+	if(state == 6)
 		state = 3
-		visible_message("<span class='warning'>"The bolts on \the [src] look like they've cooled off..."</span>")
+		visible_message("<span class='warning'>[user]'s one-way screws look like they've cooled off...</span>")
 	else return
 
 /obj/structure/window/attackby(obj/item/W as obj, mob/user as mob)
@@ -50,7 +73,7 @@ State Reference for R-Windows:
 			var/state = G.state
 			qdel(W)	//gotta delete it here because if window breaks, it won't get deleted
 			switch (state)
-				if(<=1)
+				if(state <= 1)
 					M.visible_message("<span class='warning'>[user] slams [M] against \the [src]!</span>")
 					M.apply_damage(7)
 					hit(10)
@@ -60,7 +83,7 @@ State Reference for R-Windows:
 						M.Weaken(1)
 					M.apply_damage(10)
 					hit(25)
-				if(>= 3)
+				if(state >= 3)
 					M.visible_message("<span class='danger'><big>[user] crushes [M] against \the [src]!</big></span>")
 					M.Weaken(5)
 					M.apply_damage(20)
@@ -94,16 +117,18 @@ State Reference for R-Windows:
 			update_nearby_icons()
 			playsound(src, W.usesound, 75, 1)
 			to_chat(user, "<span class='notice'>You have unfastened the window from the frame.</span>")
-		else if(reinf && state == 55)
-			state = 44
+		else if(reinf && state == 6)
+			state = 5
 			update_nearby_icons()
 			playsound(src, W.usesound, 75, 1)
 			to_chat(user, "<span class='notice'>You have unfastened the heated screws from the frame.</span>")
-		else if(reinf && state == 44)
-			state = 3
-			update_nearby_icons()
+		else if(reinf && state == 5)
 			playsound(src, W.usesound, 75, 1)
-			to_chat(user, "<span class='notice'>You have fastened the one-way screws back into the frame.</span>")
+			to_chat(user, "<span class='warning'>You begin to tighten the one-way screws on the [src].</span>")
+			if(do_after(user, 20 * WT.toolspeed, target = src))
+				state = 3
+				update_nearby_icons()
+				to_chat(user, "<span class='notice'>You have fastened the one-way screws back into the frame.</span>")
 		else if(!reinf)
 			if(state == 3)
 				state = 0
@@ -120,26 +145,29 @@ State Reference for R-Windows:
 				playsound(src, W.usesound, 75, 1)
 				to_chat(user, "<span class='notice'>You have fastened the window onto the floor.</span>")
 	else if(W.is_wirecutter())
-		if(reinf && state == 33)
+		if(reinf && state == 4 && !shock(user, 100))
 			state = 1
-			playsound(src, W.usesound, 75, 1)
+			playsound(src, W.usesound, 100, 1)
 			to_chat(user, "<span class='notice'>You cut the reinforcment bars and the panel falls out of the way, exposing the frame screws.</span>")
 	else if(W.is_crowbar())
 		if(reinf && state == 1)
 			state = 2
 			playsound(src, W.usesound, 75, 1)
 			to_chat(user, "<span class='notice'>You have pried the window into the frame.</span>")
-		else if(reinf && state == 33)
-			state = 44
+		else if(reinf && state == 4)
+			state = 5
 			update_nearby_icons()
 			playsound(src, W.usesound, 75, 1)
 			to_chat(user, "<span class='notice'>You pry the window out back into the frame, covering the reinforcement bars.</span>")
-		else if(reinf && state == 44)
-			state = 33
-			update_nearby_tiles(need_rebuild=1)
-			update_nearby_icons()
+		else if(reinf && state == 5)
 			playsound(src, W.usesound, 75, 1)
-			to_chat(user, "<span class='notice'>You have pried the window out of the frame, exposing the reinforcement bars.</span>")
+			to_chat(user, "<span class='notice'>You begin prying the window out of the frame...</span>")
+			if(do_after(user, 5 * WT.toolspeed, target = src))
+				state = 4
+				update_nearby_tiles(need_rebuild=1)
+				update_nearby_icons()
+				playsound(src, W.usesound, 75, 1)
+				to_chat(user, "<span class='notice'>You have pried the window out of the frame, exposing the reinforcement bars.</span>")
 	else if(W.is_wrench() && !anchored && (!state || !reinf))
 		if(!glasstype)
 			to_chat(user, "<span class='notice'>You're not sure how to dismantle \the [src] properly.</span>")
